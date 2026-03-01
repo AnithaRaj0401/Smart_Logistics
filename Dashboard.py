@@ -243,8 +243,6 @@ elif selection == "Analytical Views":
   options = [" 1. Delivery Performance Insights", " 2. Courier Performance", " 3. Cost Analytics", " 4. Cancellation Analysis", " 5. Warehouse Insights"]  
   analytical_selection = st.sidebar.radio("Select Analytical View Option", options)
 
-  st.header("Analytical Views")
-
   if analytical_selection == " 1. Delivery Performance Insights":
     st.subheader("Delivery Performance Insights")
     st.subheader("1. Average delivery time per route")
