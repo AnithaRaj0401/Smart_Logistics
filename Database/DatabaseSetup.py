@@ -1,18 +1,16 @@
 import os
 import mysql.connector
 
+from Database.DBConnection import DB_NAME, DB_HOST, DB_USER, DB_PASSWORD
 from Database.InsertData import data_insertion
 
-db_name = "logistics"
 
-
-DB_SQL_TEXT = """
-CREATE DATABASE IF NOT EXISTS Logistics;
+DB_SQL_TEXT = f"""
+CREATE DATABASE IF NOT EXISTS `{DB_NAME}`;
 """
 
-
-TABLE_SQL_TEXT = """
-USE Logistics;
+TABLE_SQL_TEXT = f"""
+USE `{DB_NAME}`;
 
 DROP TABLE IF EXISTS Shipment_Tracking;
 DROP TABLE IF EXISTS Costs;
@@ -93,9 +91,9 @@ CREATE TABLE Warehouses (
 
 def get_server_connection():
     return mysql.connector.connect(
-        host="localhost",
-        user="root",
-        password="root",
+        host = DB_HOST,
+        user = DB_USER,
+        password = DB_PASSWORD,
     )
 
 def execute_sql_script(cursor, sql_text: str):
@@ -106,8 +104,7 @@ def execute_sql_script(cursor, sql_text: str):
 def create_database_and_tables():
     with get_server_connection() as conn:
         with conn.cursor() as cursor:
-            cursor.execute(f"CREATE DATABASE IF NOT EXISTS {db_name}")
-            cursor.execute(f"USE {db_name}")
+            cursor.execute(DB_SQL_TEXT)
 
             execute_sql_script(cursor, TABLE_SQL_TEXT)
 

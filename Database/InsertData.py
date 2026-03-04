@@ -1,19 +1,10 @@
 # CSV to Table and MySQL insertion
 import pandas as pd 
-import mysql.connector
-
-def get_connection():
-    """Establish and return a MySQL database connection"""
-    return mysql.connector.connect(
-        host = "localhost",
-        user = "root",
-        password = "root",
-        database = "logistics"
-    )
+from .DBConnection import get_server_connection
 
 def clear_all_table():
     """Delete all existing records from tables and reset auto-increment counters"""
-    conn = get_connection()
+    conn = get_server_connection()
     cursor = conn.cursor()
 
     # Delete all rows from each table
@@ -33,17 +24,13 @@ def clear_all_table():
 
 def insert_data_to_mysql(df, table_name):
     """Insert dataframe records into the specified MySQL table"""
-    conn = get_connection()
+    conn = get_server_connection()
     cursor = conn.cursor()
 
     # Prepare the SQL insert statement with column names and placeholders
     fieldName = ', '.join(df.columns)
     fieldValue = ', '.join(['%s'] * len(df.columns))
     sql = f"INSERT INTO {table_name} ({fieldName}) VALUES ({fieldValue})"
-
-    # Insert each row from the dataframe into the table
-    # for _, row in df.iterrows():
-    #    cursor.execute(sql, tuple(row))
 
     # Convert dataframe rows to tuples for bulk insert
     data = [tuple(row) for row in df.values]
