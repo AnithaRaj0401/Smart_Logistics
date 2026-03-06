@@ -63,7 +63,7 @@ How to Run
 ----------
 1. Create database and tables:
    Insert dataset records:
-      python Database/DataSetup.py
+      py -m Database.DatabaseSetup
 
 2. Start dashboard:
       streamlit run Dashboard.py
@@ -77,3 +77,4 @@ Notes
 -----
 - Need to ensure MySQL service is running before executing scripts.
 - If table data already exists, InsertData.py clears and reloads tables.
+
