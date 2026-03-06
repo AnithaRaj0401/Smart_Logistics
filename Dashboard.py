@@ -2,6 +2,7 @@ import pandas as pd
 import streamlit as st
 import mysql.connector
 import plotly.express as px
+from Database.DBConnection import get_server_connection
 from sql_queries import (
     Q_DISTINCT_ORIGINS,
     Q_DISTINCT_DESTINATIONS,
@@ -20,7 +21,11 @@ from sql_queries import (
     build_warehouse_query,
     q_destinations_by_origins,
     build_shipment_query,
-    build_courier_shipment_query
+    build_courier_shipment_query,
+    get_courier_delivery_kpi,
+    get_courier_performance_comparison,
+    get_delivery_performance_by_route,
+    get_daily_delivery_metrics
 )
 
 st.set_page_config(
@@ -44,24 +49,11 @@ st.title("Smart Logistics Management & Analytics Platform")
 
 st.write("This dashboard provides insights into the logistics operations, including delivery performance, inventory management, and route optimization. Use the sidebar to navigate through different sections and explore the data visualizations and analytics.")
 
-def get_connection():
-    """Establish and return a MySQL database connection"""
-    try:
-        return mysql.connector.connect(
-            host = "localhost",
-            user = "root",
-            password = "root",
-            database = "logistics"
-        )
-    except mysql.connector.Error as error:
-        st.error(f"Database connection failed: {error}")
-        return None
-
 def fetch_data(query, params=None):
     """Fetch data from the database based on the provided SQL query"""
     conn = None
     try:
-        conn = get_connection()
+        conn = get_server_connection()
         if conn is None:
             return pd.DataFrame()
 
@@ -76,7 +68,7 @@ def fetch_data(query, params=None):
 
 #Side bar for navigation
 st.sidebar.title("Dashboard Features")
-options = ["Shipment Details", "Operational KPIs", "Analytical Views"]  
+options = ["Shipment Details", "Operational KPIs", "Courier KPI", "Delivery KPI", "Analytical Views"]  
 selection = st.sidebar.radio("Select a features", options)
 
 if selection == "Shipment Details":
@@ -129,114 +121,289 @@ if selection == "Shipment Details":
   st.dataframe(shipment_data, width='stretch', height=700)
 
 elif selection == "Operational KPIs":
-  st.subheader("Operational KPIs")
+    st.subheader("Operational KPIs")
 
-  # Add pie chart for shipment status distribution
-  st.subheader("Shipment Status Distribution")
-
-  # Build KPI query to fetch counts for Delivered, Cancelled, and Active shipments
-  kpi_query = """
-    SELECT
-      (SELECT COUNT(*) FROM Shipments) AS Total_Shipments,
-      (SELECT COUNT(*) FROM Shipment_Tracking WHERE Status = 'Delivered') AS Delivered_Shipments,
-      (SELECT COUNT(*) FROM Shipment_Tracking WHERE Status = 'Cancelled') AS Cancelled_Shipments,
-      (SELECT COUNT(*) FROM Shipments) - (SELECT COUNT(*) FROM Shipment_Tracking WHERE Status IN ('Delivered', 'Cancelled')) AS Active_Shipments;
-  """
-  # Fetch KPI data for pie chart
-  kpi_data = fetch_data(kpi_query)
-
-  # Create pie chart using Plotly Express
-  if not kpi_data.empty:
-    pie_df = pd.DataFrame({
-        "Category": ["Delivered_Shipments", "Cancelled_Shipments", "Active_Shipments"],
-        "Count": [
-            int(kpi_data.loc[0, "Delivered_Shipments"] or 0),
-            int(kpi_data.loc[0, "Cancelled_Shipments"] or 0),
-            int(kpi_data.loc[0, "Active_Shipments"] or 0),
-        ],
-    })
-
-    fig = px.pie(
-        pie_df,
-        names="Category",
-        values="Count",
-        title="",
-        hole=0.3
-    )
-
-    # Show numbers (count), not %
-    fig.update_traces(
-        textinfo="value",
-        hovertemplate="%{label}: %{value}<extra></extra>"
-    ) 
-
-    st.plotly_chart(fig)
-
-    # Add bar chart for cost distribution of Delivered shipments
-    st.subheader("Delivered Shipment Cost Distribution")
-
-    # Build KPI query to fetch total costs for Delivered shipments
-    kpi_query = """
-        SELECT SUM(Fuel_Cost) AS Fuel_Costs
-          , SUM(Labor_Cost) AS Labor_Costs
-            , SUM(Misc_Cost) AS Misc_Costs
-        FROM shipments s
-          JOIN shipment_tracking t ON s.Shipment_ID = t.Shipment_ID
-            JOIN costs c ON s.Shipment_ID = c.Shipment_ID
-        WHERE t.Status = 'Delivered';  
-     """
-    # Fetch KPI data for bar chart
-    kpi_data = fetch_data(kpi_query)
-
-    # Create bar chart using Plotly Express
-    if not kpi_data.empty:
-        bar_df = pd.DataFrame({
-            "Category": ["Fuel_Costs", "Labor_Costs", "Misc_Costs"],
-            "Amount": [
-                float(kpi_data.loc[0, "Fuel_Costs"] or 0),
-                float(kpi_data.loc[0, "Labor_Costs"] or 0),
-                float(kpi_data.loc[0, "Misc_Costs"] or 0),
-            ],
-        })
-
-        fig = px.bar(
-            bar_df,
-            x="Category",
-            y="Amount",
-            color="Category",
-            text="Amount",
-            title=""
-        )
-        fig.update_traces(texttemplate="%{text:.2f}", textposition="outside")
-        fig.update_layout(showlegend=False)
-
-        st.plotly_chart(fig, width=600)
+    # Fetch overall KPI metrics
+    kpi_metrics = fetch_data(get_courier_delivery_kpi())
+    
+    if not kpi_metrics.empty:
+        col1, col2, col3, col4, col5, col6 = st.columns(6)
         
-        # Add line chart for average delivery time trend
-        st.subheader("Average Delivery Time Trend")
+        with col1:
+            st.metric(
+                "Total Couriers",
+                int(kpi_metrics.loc[0, "Total_Couriers"] or 0)
+            )
+            
+        with col2:
+            st.metric(
+                "Total Deliveries",
+                int(kpi_metrics.loc[0, "Total_Deliveries"] or 0)
+            )
+            
+        with col3:
+            st.metric(
+                "Completed",
+                int(kpi_metrics.loc[0, "Completed_Deliveries"] or 0)
+            )
+        
+        with col4:
+            st.metric(
+                "Success Rate",
+                f"{kpi_metrics.loc[0, 'Delivery_Success_Rate'] or 0}%"
+            )
+        
+        with col5:
+            st.metric(
+                "Avg Delivery Time",
+                f"{kpi_metrics.loc[0, 'Avg_Delivery_Hours'] or 0} hrs"
+            )
+        
+        with col6:
+            st.metric(
+                "Avg Courier Rating",
+                f"{kpi_metrics.loc[0, 'Avg_Courier_Rating'] or 0}"
+            )
+    
+    colA, colB = st.columns(2)
+                
+    with colA:
+        # Add pie chart for shipment status distribution
+        st.subheader("Shipment Status Distribution")
 
-        avg_delivery_query = """
+        # Build KPI query to fetch counts for Delivered, Cancelled, and Active shipments
+        kpi_query = """
             SELECT
-                s.Order_Date,
-                ROUND(AVG(TIMESTAMPDIFF(HOUR, s.Order_Date, s.Delivery_Date)), 2) AS Avg_Delivery_Hours
-            FROM Shipments s
-            WHERE s.Delivery_Date IS NOT NULL
-            GROUP BY s.Order_Date
-            ORDER BY s.Order_Date
+            (SELECT COUNT(*) FROM Shipments) AS Total_Shipments,
+            (SELECT COUNT(*) FROM Shipment_Tracking WHERE Status = 'Delivered') AS Delivered_Shipments,
+            (SELECT COUNT(*) FROM Shipment_Tracking WHERE Status = 'Cancelled') AS Cancelled_Shipments,
+            (SELECT COUNT(*) FROM Shipments) - (SELECT COUNT(*) FROM Shipment_Tracking WHERE Status IN ('Delivered', 'Cancelled')) AS Active_Shipments;
         """
-        # Fetch data for average delivery time trend
-        avg_delivery_df = fetch_data(avg_delivery_query)
+        # Fetch KPI data for pie chart
+        kpi_data = fetch_data(kpi_query)
 
-        # Create line chart using Plotly Express
-        if not avg_delivery_df.empty:
-            fig = px.line(
-                avg_delivery_df,
-                x="Order_Date",
-                y="Avg_Delivery_Hours",
-                markers=True,
+        # Create pie chart using Plotly Express
+        if not kpi_data.empty:
+            pie_df = pd.DataFrame({
+                "Category": ["Delivered_Shipments", "Cancelled_Shipments", "Active_Shipments"],
+                "Count": [
+                    int(kpi_data.loc[0, "Delivered_Shipments"] or 0),
+                    int(kpi_data.loc[0, "Cancelled_Shipments"] or 0),
+                    int(kpi_data.loc[0, "Active_Shipments"] or 0),
+                ],
+            })
+
+            fig = px.pie(
+                pie_df,
+                names="Category",
+                values="Count",
+                title="",
+                hole=0.3
+            )
+
+            # Show numbers (count), not %
+            fig.update_traces(
+                textinfo="value",
+                hovertemplate="%{label}: %{value}<extra></extra>"
+            ) 
+
+            st.plotly_chart(fig)
+    
+    with colB:
+        # Add bar chart for cost distribution of Delivered shipments
+        st.subheader("Delivered Shipment Cost Distribution")
+
+        # Build KPI query to fetch total costs for Delivered shipments
+        kpi_query = """
+            SELECT SUM(Fuel_Cost) AS Fuel_Costs
+            , SUM(Labor_Cost) AS Labor_Costs
+                , SUM(Misc_Cost) AS Misc_Costs
+            FROM shipments s
+            JOIN shipment_tracking t ON s.Shipment_ID = t.Shipment_ID
+                JOIN costs c ON s.Shipment_ID = c.Shipment_ID
+            WHERE t.Status = 'Delivered';  
+        """
+        # Fetch KPI data for bar chart
+        kpi_data = fetch_data(kpi_query)
+
+        # Create bar chart using Plotly Express
+        if not kpi_data.empty:
+            bar_df = pd.DataFrame({
+                "Category": ["Fuel_Costs", "Labor_Costs", "Misc_Costs"],
+                "Amount": [
+                    float(kpi_data.loc[0, "Fuel_Costs"] or 0),
+                    float(kpi_data.loc[0, "Labor_Costs"] or 0),
+                    float(kpi_data.loc[0, "Misc_Costs"] or 0),
+                ],
+            })
+
+            fig = px.bar(
+                bar_df,
+                x="Category",
+                y="Amount",
+                color="Category",
+                text="Amount",
                 title=""
             )
-            st.plotly_chart(fig, width='stretch')
+            fig.update_traces(texttemplate="%{text:.2f}", textposition="outside")
+            fig.update_layout(showlegend=False)
+
+            st.plotly_chart(fig, width=600)
+        
+    # Add line chart for average delivery time trend
+    st.subheader("Average Delivery Time Trend")
+
+    avg_delivery_query = """
+        SELECT
+            s.Order_Date,
+            ROUND(AVG(TIMESTAMPDIFF(HOUR, s.Order_Date, s.Delivery_Date)), 2) AS Avg_Delivery_Hours
+        FROM Shipments s
+        WHERE s.Delivery_Date IS NOT NULL
+        GROUP BY s.Order_Date
+        ORDER BY s.Order_Date
+    """
+    # Fetch data for average delivery time trend
+    avg_delivery_df = fetch_data(avg_delivery_query)
+
+    # Create line chart using Plotly Express
+    if not avg_delivery_df.empty:
+        fig = px.line(
+            avg_delivery_df,
+            x="Order_Date",
+            y="Avg_Delivery_Hours",
+            title="Daily Average Delivery Time Trend",
+            markers=True,
+            labels={
+                "Order_Date": "Date",
+                "Avg_Delivery_Hours": "Avg Delivery Time (hours)"
+            })
+        st.plotly_chart(fig, width='stretch')
+
+    # Daily Delivery Metrics Trend
+    st.subheader("Daily Delivery Performance Trend")
+
+    daily_metrics = fetch_data(get_daily_delivery_metrics())
+
+    if not daily_metrics.empty:
+        daily_metrics['Order_Date'] = pd.to_datetime(daily_metrics['Order_Date'])
+        daily_metrics = daily_metrics.sort_values('Order_Date')
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            fig = px.line(
+                daily_metrics,
+                x="Order_Date",
+                y="Daily_Success_Rate",
+                markers=True,
+                title="Daily Delivery Success Rate Trend",
+                labels={
+                "Order_Date": "Date",
+                "Daily_Success_Rate": "Success Rate (%)"
+                }
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        
+        with col2:
+            fig = px.bar(
+                daily_metrics,
+                x="Order_Date",
+                y=["Delivered_Orders", "Cancelled_Orders"],
+                title="Daily Orders: Delivered vs Cancelled",
+                labels={"Order_Date": "Date", "value": "Count"},
+                barmode="stack",
+                color_discrete_map={"Delivered_Orders": "#1f77b4", "Cancelled_Orders": "#ff7f0e"}
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        
+elif selection == "Courier KPI":
+
+  # Courier Performance Comparison
+  st.subheader("Courier Performance Comparison")
+  
+  courier_perf_data = fetch_data(get_courier_performance_comparison())
+  
+  if not courier_perf_data.empty:
+    
+    st.subheader("Performance Table")
+    st.dataframe(courier_perf_data, use_container_width=True)
+   
+    st.subheader("Average Delivery Hours")
+    fig = px.bar(
+        courier_perf_data.sort_values("Avg_Delivery_Hours", ascending=False).head(50),
+        x="Courier_Name",
+        y="Avg_Delivery_Hours",
+        color="Avg_Delivery_Hours",
+        title="Average Delivery Hours by Courier",
+        labels={"Avg_Delivery_Hours": "Avg Delivery Time (hours)"},
+        color_continuous_scale="RdYlGn_r"
+    )
+    st.plotly_chart(fig, use_container_width=True)
+    
+    st.subheader("On-Time Delivery %")
+    fig = px.bar(
+        courier_perf_data.sort_values("On_Time_Percent", ascending=False),
+        x="Courier_Name",
+        y="On_Time_Percent",
+        color="On_Time_Percent",
+        title="On-Time Delivery Percentage by Courier",
+        labels={"On_Time_Percent": "On-Time Delivery %"},
+        color_continuous_scale="RdYlGn"
+    )
+    st.plotly_chart(fig, use_container_width=True)
+ 
+elif selection == "Delivery KPI":
+
+  # Delivery Performance by Route
+  st.subheader("Delivery Performance by Route")
+  
+  route_perf_data = fetch_data(get_delivery_performance_by_route())
+  
+  if not route_perf_data.empty:
+    st.subheader("Route Details")
+    st.dataframe(route_perf_data, use_container_width=True)
+        
+    st.subheader("On-Time Performance")
+    fig = px.bar(
+        route_perf_data.sort_values("On_Time_Delivery_Percent", ascending=False).head(15),
+        x="Route_ID",
+        y="On_Time_Delivery_Percent",
+        color="On_Time_Delivery_Percent",
+        title="Top 15 Routes by On-Time Delivery %",
+        labels={"On_Time_Delivery_Percent": "On-Time %"},
+        color_continuous_scale="RdYlGn"
+    )
+    st.plotly_chart(fig, use_container_width=True)
+    
+    st.subheader("Success Rate by Route")
+    fig = px.bar(
+        route_perf_data.sort_values("Delivery_Success_Rate", ascending=False).head(15),
+        x="Route_ID",
+        y="Delivery_Success_Rate",
+        color="Delivery_Success_Rate",
+        title="Top 15 Routes by Delivery Success Rate",
+        labels={"Delivery_Success_Rate": "Success Rate (%)"},
+        color_continuous_scale="RdYlGn"
+    )
+    st.plotly_chart(fig, use_container_width=True)
+    
+    st.subheader("Distance vs Delivery Time")
+    fig = px.scatter(
+        route_perf_data,
+        x="Distance_KM",
+        y="Avg_Actual_Hours",
+        size="Total_Shipments",
+        color="Avg_Delay_Hours",
+        hover_name="Route_ID",
+        title="Distance vs Actual Delivery Time",
+        labels={
+          "Distance_KM": "Distance (KM)",
+          "Avg_Actual_Hours": "Avg Delivery Time (hours)",
+          "Avg_Delay_Hours": "Avg Delay (hours)"
+        },
+        color_continuous_scale="RdYlGn_r"
+    )
+    st.plotly_chart(fig, use_container_width=True)    
   
 elif selection == "Analytical Views":
   # Radio buttons for selecting different analytical views

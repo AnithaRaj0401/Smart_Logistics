@@ -342,3 +342,134 @@ def build_warehouse_query():
       ORDER BY Capacity DESC;
     """
     return query
+
+
+def get_courier_delivery_kpi():
+    """Get overall KPI metrics for courier and delivery performance"""
+    query = """
+    SELECT
+        COUNT(DISTINCT s.Courier_ID) AS Total_Couriers,
+        COUNT(*) AS Total_Deliveries,
+        SUM(CASE WHEN s.Status = 'Delivered' THEN 1 ELSE 0 END) AS Completed_Deliveries,
+        ROUND(
+            100.0 * SUM(CASE WHEN s.Status = 'Delivered' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0),
+            2
+        ) AS Delivery_Success_Rate,
+        ROUND(AVG(TIMESTAMPDIFF(HOUR, s.Order_Date, s.Delivery_Date)), 2) AS Avg_Delivery_Hours,
+        ROUND(AVG(c.Rating), 2) AS Avg_Courier_Rating
+    FROM Shipments s
+    LEFT JOIN Courier_Staff c ON s.Courier_ID = c.Courier_ID
+    WHERE s.Status IS NOT NULL
+    """
+    return query
+
+def get_courier_performance_comparison():
+    """Get detailed courier performance comparison metrics"""
+    query = """
+    SELECT
+        c.Courier_ID,
+        c.Name AS Courier_Name,
+        c.Rating,
+        c.Vehicle_Type,
+        COUNT(s.Shipment_ID) AS Total_Shipments,
+        SUM(CASE WHEN s.Status = 'Delivered' THEN 1 ELSE 0 END) AS Delivered_Count,
+        SUM(CASE WHEN s.Status = 'Cancelled' THEN 1 ELSE 0 END) AS Cancelled_Count,
+        ROUND(
+            100.0 * SUM(CASE WHEN s.Status = 'Delivered' THEN 1 ELSE 0 END) / NULLIF(COUNT(s.Shipment_ID), 0),
+            2
+        ) AS Delivery_Success_Rate,
+        ROUND(
+            AVG(CASE 
+                WHEN s.Delivery_Date IS NOT NULL 
+                THEN TIMESTAMPDIFF(HOUR, s.Order_Date, s.Delivery_Date) 
+            END),
+            2
+        ) AS Avg_Delivery_Hours,
+        ROUND(
+            SUM(CASE 
+                WHEN s.Delivery_Date IS NOT NULL 
+                AND TIMESTAMPDIFF(HOUR, s.Order_Date, s.Delivery_Date) <= r.Avg_Time_Hours 
+                THEN 1 
+                ELSE 0 
+            END) * 100.0 / NULLIF(SUM(CASE WHEN s.Status = 'Delivered' THEN 1 ELSE 0 END), 0),
+            2
+        ) AS On_Time_Percent
+    FROM Courier_Staff c
+    LEFT JOIN Shipments s ON c.Courier_ID = s.Courier_ID
+    LEFT JOIN Routes r ON r.Origin = s.Origin AND r.Destination = s.Destination
+    GROUP BY c.Courier_ID, c.Name, c.Rating, c.Vehicle_Type
+    ORDER BY Rating DESC, Delivered_Count DESC
+    """
+    return query
+
+def get_delivery_performance_by_route():
+    """Get delivery performance metrics by route"""
+    query = """
+    SELECT
+        r.Route_ID,
+        r.Origin,
+        r.Destination,
+        r.Distance_KM,
+        r.Avg_Time_Hours,
+        COUNT(s.Shipment_ID) AS Total_Shipments,
+        SUM(CASE WHEN s.Status = 'Delivered' THEN 1 ELSE 0 END) AS Delivered_Shipments,
+        ROUND(
+            100.0 * SUM(CASE WHEN s.Status = 'Delivered' THEN 1 ELSE 0 END) / NULLIF(COUNT(s.Shipment_ID), 0),
+            2
+        ) AS Delivery_Success_Rate,
+        ROUND(
+            AVG(CASE 
+                WHEN s.Delivery_Date IS NOT NULL 
+                THEN TIMESTAMPDIFF(HOUR, s.Order_Date, s.Delivery_Date) 
+            END),
+            2
+        ) AS Avg_Actual_Hours,
+        ROUND(
+            ROUND(AVG(CASE 
+                WHEN s.Delivery_Date IS NOT NULL 
+                THEN TIMESTAMPDIFF(HOUR, s.Order_Date, s.Delivery_Date) 
+            END), 2) - r.Avg_Time_Hours,
+            2
+        ) AS Avg_Delay_Hours,
+        ROUND(
+            SUM(CASE 
+                WHEN s.Delivery_Date IS NOT NULL 
+                AND TIMESTAMPDIFF(HOUR, s.Order_Date, s.Delivery_Date) <= r.Avg_Time_Hours 
+                THEN 1 
+                ELSE 0 
+            END) * 100.0 / NULLIF(SUM(CASE WHEN s.Status = 'Delivered' THEN 1 ELSE 0 END), 0),
+            2
+        ) AS On_Time_Delivery_Percent
+    FROM Routes r
+    LEFT JOIN Shipments s ON s.Origin = r.Origin AND s.Destination = r.Destination
+    GROUP BY r.Route_ID, r.Origin, r.Destination, r.Distance_KM, r.Avg_Time_Hours
+    ORDER BY Total_Shipments DESC
+    """
+    return query
+
+
+def get_daily_delivery_metrics():
+    """Get daily delivery performance trends"""
+    query = """
+    SELECT
+        DATE(s.Order_Date) AS Order_Date,
+        COUNT(*) AS Total_Orders,
+        SUM(CASE WHEN s.Status = 'Delivered' THEN 1 ELSE 0 END) AS Delivered_Orders,
+        SUM(CASE WHEN s.Status = 'Cancelled' THEN 1 ELSE 0 END) AS Cancelled_Orders,
+        ROUND(
+            100.0 * SUM(CASE WHEN s.Status = 'Delivered' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0),
+            2
+        ) AS Daily_Success_Rate,
+        ROUND(
+            AVG(CASE 
+                WHEN s.Delivery_Date IS NOT NULL 
+                THEN TIMESTAMPDIFF(HOUR, s.Order_Date, s.Delivery_Date) 
+            END),
+            2
+        ) AS Avg_Delivery_Hours
+    FROM Shipments s
+    WHERE s.Order_Date IS NOT NULL
+    GROUP BY DATE(s.Order_Date)
+    ORDER BY Order_Date DESC
+    """
+    return query

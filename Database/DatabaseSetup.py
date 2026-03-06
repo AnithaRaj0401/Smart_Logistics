@@ -105,14 +105,17 @@ def create_database_and_tables():
     with get_server_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute(DB_SQL_TEXT)
+            print("Database created successfully.")
+            print("-----------------------------")
 
             execute_sql_script(cursor, TABLE_SQL_TEXT)
+            print("Tables created successfully.")
+            print("-----------------------------")
 
         conn.commit()
 
 try:
     create_database_and_tables()
-    print("Database and tables created successfully.")
 
     # Insert data to the tables
     data_insertion()
